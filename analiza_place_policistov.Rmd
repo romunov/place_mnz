@@ -1,0 +1,91 @@
+---
+title: "Porazdelitev bruto plač zaposlenih v policiji"
+output: github_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+
+library(tabulizer)
+library(ggplot2)
+```
+
+```{r}
+if (file.exists("./data/unparsed_matrix.RData")) {
+  load("./data/unparsed_matrix.RData")
+} else {
+  xy <- extract_tables("./data/Place-MNZ_december_2020n.pdf")
+  save(xy, file = "./data/unparsed_matrix.RData")
+}
+```
+
+```{r}
+xy <- do.call(rbind, xy)
+xy <- as.data.frame(xy)
+
+xy <- xy[xy$V1 != "ZŠ", ]
+
+colnames(xy) <- c("id", "name_surname", "title", "unit", "gross_pay", "comment")
+
+xy$gross_pay <- gsub(" €", replacement = "", x = xy$gross_pay)
+xy$gross_pay <- gsub("\\.", replacement = "", x = xy$gross_pay)
+xy$gross_pay <- gsub("\\,", replacement = "\\.", x = xy$gross_pay)
+xy$gross_pay <- as.numeric(xy$gross_pay)
+
+xy$title <- tolower(xy$title)
+```
+
+```{r}
+top.title <- sort(table(xy$title), decreasing = TRUE)[1:36]
+
+xy.sub <- xy[xy$title %in% names(top.title), ]
+xy.out <- xy[!(xy$title %in% names(top.title)), ]
+
+xy.sub$title <- gsub("-", replacement = "\n", xy.sub$title)
+```
+
+Po veliki zaslugi vojaka Aleša smo dobili vpogled v decembrske _bruto_ plače zaposlenih v policiji. Sicer se strinjam, da bi morale biti plače javne (tudi z vsemi dodatki), ne strinjam pa se, da se jih objavili z imenom in priimkom. Informacijski pooblaščenec je, domnevno, rekel, da je to ok. Več o podatkih si lahko prebereš na [spletni strani Ministrstva za notranje zadeve](https://www.gov.si/novice/2021-01-11-minister-hojs-ob-zacetku-stavke-po-moji-oceni-je-stavka-neupravicena-in-neutemeljena). Se že veselimo objave januarskih plač, kjer ne bo obračunanih vseh veselodecembrskih dodatkov.
+
+Spodaj je prikazana razporeditev plač znotraj 36 nazivov, ki imajo skupno največ oseb (`r nrow(xy.sub)` od skupno `r nrow(xy)` oseb). To omejitev sem postavil zato, ker je vseh razredov skupno `r length(unique(xy$title))` in bi bil dotični prikaz zelo nepregleden.
+
+```{r fig.width = 8, fig.height = 12}
+ggplot(xy.sub, aes(x = gross_pay)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 7),
+        strip.text = element_text(size = 8)) +
+  scale_x_continuous(breaks = seq(from = 0, to = 10000, by = 1000)) +
+  geom_histogram(alpha = 0.75) +
+  facet_wrap(~ title, ncol = 4)
+
+```
+
+Naslednji graf prikazuje plače oseb, ki spadajo v razrede, ki niso prikazani na zgornji sliki.
+```{r}
+ggplot(xy.out, aes(x = gross_pay)) +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(from = 0, to = 10000, by = 1000)) +
+  geom_histogram(alpha = 0.75)
+```
+
+Skupna porazdelitev vseh plač pa je prikazano na spodnji sliki. Navpične črte prikazujejo decile. Na primer, prvi decil (10 %) pomeni, da ima 10 % v policiji zaposlenih oseb nižjo od 1500 EUR bruto in obratno, 90 % oseb ima plačo višjo od 1500 EUR bruto.
+
+```{r}
+mys <- seq(from = 0, to = 1, by = 0.1)
+qts <- quantile(xy$gross_pay, probs = mys)
+qts <- data.frame(qts = qts, y = 1200, label = paste(mys * 100, " %"))
+```
+
+```{r}
+ggplot(xy, aes(x = gross_pay)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 7),
+        strip.text = element_text(size = 8)) +
+  geom_vline(data = qts, aes(xintercept = qts)) +
+  geom_text(data = qts, aes(x = qts, y = y, label = label), angle = 90, vjust = -0.45, size = 2.5) +
+  scale_x_continuous(breaks = seq(from = 0, to = 10000, by = 1000)) +
+  geom_histogram(alpha = 0.75)
+```
+
+Za mesec december je bilo za plače zaposlenih v policiji izplačano `r round(sum(xy$gross_pay) / 1E6, digits = 3)` miljonov EUR.
+  
+Roman Luštrik, 2021-01-12
